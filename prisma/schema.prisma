@@ -75,6 +75,7 @@ model Tournament {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   participants Participant[]
+  rounds       Round[]
 }
 
 enum TournamentFormat {
@@ -127,4 +128,22 @@ enum DeckStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+model Round {
+  id           String      @id @default(uuid())
+  tournamentId String
+  number       Int
+  status       RoundStatus @default(PENDING)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id])
+
+  @@unique([tournamentId, number])
+}
+
+enum RoundStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
 }
