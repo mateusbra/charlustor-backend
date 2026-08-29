@@ -7,5 +7,6 @@ import { TournamentsController } from './tournaments.controller.js';
   imports: [PassportModule.register({})],
   controllers: [TournamentsController],
   providers: [TournamentsService],
+  exports: [TournamentsService],
 })
 export class TournamentsModule {}

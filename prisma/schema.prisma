@@ -25,6 +25,7 @@ model User {
   refreshTokens        RefreshToken[]
   resetTokens          PasswordResetToken[]
   tournaments          Tournament[]
+  participations       Participant[]
 }
 
 model OAuthAccount {
@@ -62,17 +63,18 @@ enum Role {
 }
 
 model Tournament {
-  id          String           @id @default(uuid())
-  name        String
-  format      TournamentFormat
-  roundsCount Int?
-  topCutSize  Int?
-  scheduledAt DateTime
-  status      TournamentStatus @default(DRAFT)
-  organizerId String
-  organizer   User             @relation(fields: [organizerId], references: [id])
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id           String           @id @default(uuid())
+  name         String
+  format       TournamentFormat
+  roundsCount  Int?
+  topCutSize   Int?
+  scheduledAt  DateTime
+  status       TournamentStatus @default(DRAFT)
+  organizerId  String
+  organizer    User             @relation(fields: [organizerId], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  participants Participant[]
 }
 
 enum TournamentFormat {
@@ -88,4 +90,22 @@ enum TournamentStatus {
   REGISTRATION_CLOSED
   IN_PROGRESS
   COMPLETED
+}
+
+model Participant {
+  id           String            @id @default(uuid())
+  tournamentId String
+  userId       String
+  status       ParticipantStatus @default(REGISTERED)
+  registeredAt DateTime          @default(now())
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
+
+  @@unique([tournamentId, userId])
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  WITHDRAWN
+  DISQUALIFIED
 }

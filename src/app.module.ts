@@ -6,9 +6,10 @@ import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { TournamentsModule } from './tournaments/tournaments.module.js';
+import { RegistrationsModule } from './registrations/registrations.module.js';
 
 @Module({
-  imports: [PrismaModule, HealthModule, UsersModule, AuthModule, TournamentsModule],
+  imports: [PrismaModule, HealthModule, UsersModule, AuthModule, TournamentsModule, RegistrationsModule],
   controllers: [AppController],
   providers: [AppService],
 })
