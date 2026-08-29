@@ -1,4 +1,4 @@
-import { Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { TournamentEngineService } from './tournament-engine.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -24,5 +24,10 @@ export class TournamentEngineController {
   @Post('complete')
   complete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engineService.complete(id, user);
+  }
+
+  @Get('rounds')
+  listRounds(@Param('id') id: string) {
+    return this.engineService.listRounds(id);
   }
 }

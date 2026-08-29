@@ -102,6 +102,8 @@ model Participant {
   tournament   Tournament        @relation(fields: [tournamentId], references: [id])
   user         User              @relation(fields: [userId], references: [id])
   deck         Deck?
+  matchesAsA   Match[]           @relation("MatchA")
+  matchesAsB   Match[]           @relation("MatchB")
 
   @@unique([tournamentId, userId])
 }
@@ -138,6 +140,7 @@ model Round {
   startedAt    DateTime?
   completedAt  DateTime?
   tournament   Tournament  @relation(fields: [tournamentId], references: [id])
+  matches      Match[]
 
   @@unique([tournamentId, number])
 }
@@ -146,4 +149,15 @@ enum RoundStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
+}
+
+model Match {
+  id             String       @id @default(uuid())
+  roundId        String
+  participantAId String
+  participantBId String?
+  createdAt      DateTime     @default(now())
+  round          Round        @relation(fields: [roundId], references: [id])
+  participantA   Participant  @relation("MatchA", fields: [participantAId], references: [id])
+  participantB   Participant? @relation("MatchB", fields: [participantBId], references: [id])
 }

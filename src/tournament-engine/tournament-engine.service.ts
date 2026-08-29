@@ -1,12 +1,20 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { SwissPairingService } from '../pairing/swiss-pairing.service.js';
+import { BracketPairingService } from '../pairing/bracket-pairing.service.js';
+import type { Pairing } from '../pairing/swiss-pairing.service.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
 const STARTABLE_STATUSES = ['REGISTRATION_OPEN', 'REGISTRATION_CLOSED'];
+const SWISS_FORMATS = ['SWISS', 'SWISS_TOP_CUT'];
 
 @Injectable()
 export class TournamentEngineService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly swissPairingService: SwissPairingService,
+    private readonly bracketPairingService: BracketPairingService,
+  ) {}
 
   async start(tournamentId: string, requester: AuthenticatedUser) {
     const tournament = await this.findTournament(tournamentId);
@@ -18,6 +26,7 @@ export class TournamentEngineService {
     const participants = await this.prisma.participant.findMany({
       where: { tournamentId, status: 'REGISTERED' },
       include: { deck: true, user: { select: { nickname: true } } },
+      orderBy: { registeredAt: 'asc' },
     });
     const withoutApprovedDeck = participants.filter((p) => p.deck?.validationStatus !== 'APPROVED');
     if (withoutApprovedDeck.length > 0) {
@@ -27,14 +36,38 @@ export class TournamentEngineService {
       });
     }
 
-    await this.prisma.$transaction([
-      this.prisma.tournament.update({ where: { id: tournamentId }, data: { status: 'IN_PROGRESS' } }),
-      this.prisma.round.create({
+    const pairings = this.generateFirstRoundPairings(
+      tournament.format,
+      participants.map((p) => p.id),
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tournament.update({ where: { id: tournamentId }, data: { status: 'IN_PROGRESS' } });
+      const round = await tx.round.create({
         data: { tournamentId, number: 1, status: 'IN_PROGRESS', startedAt: new Date() },
-      }),
-    ]);
+      });
+      if (pairings.length > 0) {
+        await tx.match.createMany({
+          data: pairings.map((p) => ({
+            roundId: round.id,
+            participantAId: p.participantAId,
+            participantBId: p.participantBId,
+          })),
+        });
+      }
+    });
 
     return this.findTournament(tournamentId);
+  }
+
+  // Round 1 only — pairing for round 2+ needs match results (RF5 / feature 009),
+  // which don't exist yet. See plans/completed/008-swiss-pairing-engine.md.
+  private generateFirstRoundPairings(format: string, participantIds: string[]): Pairing[] {
+    if (SWISS_FORMATS.includes(format)) {
+      const standings = participantIds.map((id) => ({ participantId: id, score: 0, hadBye: false }));
+      return this.swissPairingService.pairRound(standings);
+    }
+    return this.bracketPairingService.seedFirstRound(participantIds);
   }
 
   async advanceRound(tournamentId: string, requester: AuthenticatedUser) {
@@ -76,6 +109,14 @@ export class TournamentEngineService {
     ]);
 
     return this.findTournament(tournamentId);
+  }
+
+  listRounds(tournamentId: string) {
+    return this.prisma.round.findMany({
+      where: { tournamentId },
+      orderBy: { number: 'asc' },
+      include: { _count: { select: { matches: true } } },
+    });
   }
 
   private async findTournament(id: string) {
