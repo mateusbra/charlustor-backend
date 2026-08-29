@@ -24,6 +24,7 @@ model User {
   oauthAccounts        OAuthAccount[]
   refreshTokens        RefreshToken[]
   resetTokens          PasswordResetToken[]
+  tournaments          Tournament[]
 }
 
 model OAuthAccount {
@@ -58,4 +59,33 @@ enum Role {
   PLAYER
   ORGANIZER
   ADMIN
+}
+
+model Tournament {
+  id          String           @id @default(uuid())
+  name        String
+  format      TournamentFormat
+  roundsCount Int?
+  topCutSize  Int?
+  scheduledAt DateTime
+  status      TournamentStatus @default(DRAFT)
+  organizerId String
+  organizer   User             @relation(fields: [organizerId], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+enum TournamentFormat {
+  SWISS
+  SINGLE_ELIM
+  DOUBLE_ELIM
+  SWISS_TOP_CUT
+}
+
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  IN_PROGRESS
+  COMPLETED
 }
