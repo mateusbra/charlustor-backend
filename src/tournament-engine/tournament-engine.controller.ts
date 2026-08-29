@@ -30,6 +30,13 @@ export class TournamentEngineController {
     return this.engineService.complete(id, user);
   }
 
+  @Post('start-top-cut')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  startTopCut(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.engineService.startTopCut(id, user);
+  }
+
   // Public — players need to see pairings/scores for their own tournament too.
   @Get('rounds')
   listRounds(@Param('id') id: string) {

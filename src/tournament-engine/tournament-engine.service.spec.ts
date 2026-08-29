@@ -11,7 +11,7 @@ const OTHER_ORGANIZER: AuthenticatedUser = { id: 'org-2', email: 'org2@a.com', r
 function createMocks() {
   const txPrisma = {
     tournament: { update: vi.fn() },
-    round: { create: vi.fn(async () => ({ id: 'r-1' })) },
+    round: { create: vi.fn(async () => ({ id: 'r-1' })), update: vi.fn() },
     match: { createMany: vi.fn() },
   };
   const prisma = {
@@ -24,12 +24,14 @@ function createMocks() {
       return Promise.all(arg as Promise<unknown>[]);
     }),
   };
+  const standingsService = { getStandings: vi.fn(async () => []) };
   const service = new TournamentEngineService(
     prisma as never,
     new SwissPairingService(),
     new BracketPairingService(),
+    standingsService as never,
   );
-  return { service, prisma, txPrisma };
+  return { service, prisma, txPrisma, standingsService };
 }
 
 function baseTournament(overrides: Record<string, unknown> = {}) {
@@ -87,6 +89,7 @@ describe('TournamentEngineService — start', () => {
       data: [
         {
           roundId: 'r-1',
+          position: 0,
           participantAId: 'p-1',
           participantBId: null,
           resultStatus: 'CONFIRMED',
@@ -113,6 +116,7 @@ describe('TournamentEngineService — start', () => {
       data: [
         {
           roundId: 'r-1',
+          position: 0,
           participantAId: 'p-1',
           participantBId: 'p-4',
           resultStatus: 'PENDING',
@@ -121,6 +125,7 @@ describe('TournamentEngineService — start', () => {
         },
         {
           roundId: 'r-1',
+          position: 1,
           participantAId: 'p-2',
           participantBId: 'p-3',
           resultStatus: 'PENDING',
@@ -139,7 +144,7 @@ describe('TournamentEngineService — start', () => {
   });
 });
 
-describe('TournamentEngineService — advanceRound', () => {
+describe('TournamentEngineService — advanceRound (Swiss)', () => {
   it('rejects advancing a tournament that is not IN_PROGRESS', async () => {
     const { service, prisma } = createMocks();
     prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'REGISTRATION_OPEN' }));
@@ -158,14 +163,14 @@ describe('TournamentEngineService — advanceRound', () => {
   it('completes the current round and creates the next one when every match is confirmed', async () => {
     const { service, prisma } = createMocks();
     prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS' }));
-    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS' });
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS', phase: 'SWISS' });
     prisma.match.findMany.mockResolvedValue([]);
 
     await service.advanceRound('t-1', OWNER);
 
     expect(prisma.match.findMany).toHaveBeenCalledWith({
-      where: { roundId: 'r-1', resultStatus: { not: 'CONFIRMED' } },
-      select: { id: true, resultStatus: true },
+      where: { roundId: 'r-1' },
+      orderBy: { position: 'asc' },
     });
     expect(prisma.round.update).toHaveBeenCalledWith({
       where: { id: 'r-1' },
@@ -179,11 +184,127 @@ describe('TournamentEngineService — advanceRound', () => {
   it('blocks advancing when a match is still PENDING or DISPUTED', async () => {
     const { service, prisma } = createMocks();
     prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS' }));
-    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS' });
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS', phase: 'SWISS' });
     prisma.match.findMany.mockResolvedValue([{ id: 'm-1', resultStatus: 'DISPUTED' }]);
 
     await expect(service.advanceRound('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.round.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('TournamentEngineService — advanceRound (bracket progression)', () => {
+  it('pairs adjacent winners into the next TOP_CUT round', async () => {
+    const { service, prisma, txPrisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS', format: 'SWISS_TOP_CUT' }));
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 3, status: 'IN_PROGRESS', phase: 'TOP_CUT' });
+    prisma.match.findMany.mockResolvedValue([
+      { id: 'm-1', participantAId: 'p-1', participantBId: 'p-2', confirmedScore: '2-0', resultStatus: 'CONFIRMED' },
+      { id: 'm-2', participantAId: 'p-3', participantBId: 'p-4', confirmedScore: '1-2', resultStatus: 'CONFIRMED' },
+    ]);
+
+    await service.advanceRound('t-1', OWNER);
+
+    expect(txPrisma.round.create).toHaveBeenCalledWith({
+      data: { tournamentId: 't-1', number: 4, status: 'IN_PROGRESS', phase: 'TOP_CUT', startedAt: expect.any(Date) },
+    });
+    expect(txPrisma.match.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          roundId: 'r-1',
+          position: 0,
+          participantAId: 'p-1', // won m-1 (2-0)
+          participantBId: 'p-4', // won m-2 (1-2, B wins)
+          resultStatus: 'PENDING',
+          confirmedScore: null,
+          confirmedAt: null,
+        },
+      ],
+    });
+  });
+
+  it('treats a bye winner correctly when pairing the next round', async () => {
+    const { service, prisma, txPrisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS', format: 'SINGLE_ELIM' }));
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS', phase: 'SWISS' });
+    prisma.match.findMany.mockResolvedValue([
+      { id: 'm-1', participantAId: 'p-1', participantBId: null, confirmedScore: 'BYE', resultStatus: 'CONFIRMED' },
+      { id: 'm-2', participantAId: 'p-2', participantBId: 'p-3', confirmedScore: '2-1', resultStatus: 'CONFIRMED' },
+    ]);
+
+    await service.advanceRound('t-1', OWNER);
+
+    expect(txPrisma.match.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ participantAId: 'p-1', participantBId: 'p-2' }),
+      ],
+    });
+  });
+
+  it('completes the tournament once only one winner remains', async () => {
+    const { service, prisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS', format: 'SWISS_TOP_CUT' }));
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 5, status: 'IN_PROGRESS', phase: 'TOP_CUT' });
+    prisma.match.findMany.mockResolvedValue([
+      { id: 'm-1', participantAId: 'p-1', participantBId: 'p-2', confirmedScore: '2-1', resultStatus: 'CONFIRMED' },
+    ]);
+
+    await service.advanceRound('t-1', OWNER);
+
+    expect(prisma.tournament.update).toHaveBeenCalledWith({ where: { id: 't-1' }, data: { status: 'COMPLETED' } });
+  });
+});
+
+describe('TournamentEngineService — startTopCut', () => {
+  function topCutTournament(overrides: Record<string, unknown> = {}) {
+    return baseTournament({ format: 'SWISS_TOP_CUT', status: 'IN_PROGRESS', topCutSize: 2, ...overrides });
+  }
+
+  it('rejects when the format has no Top Cut', async () => {
+    const { service, prisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(topCutTournament({ format: 'SWISS' }));
+
+    await expect(service.startTopCut('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects when the Swiss phase still has an active round', async () => {
+    const { service, prisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(topCutTournament());
+    prisma.round.findFirst.mockResolvedValueOnce({ id: 'r-1', phase: 'SWISS', status: 'IN_PROGRESS' });
+
+    await expect(service.startTopCut('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects when Top Cut was already started', async () => {
+    const { service, prisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(topCutTournament());
+    prisma.round.findFirst
+      .mockResolvedValueOnce(null) // no active Swiss round
+      .mockResolvedValueOnce({ id: 'r-2', phase: 'TOP_CUT' }); // already started
+
+    await expect(service.startTopCut('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('seeds the bracket from the top standings, in order', async () => {
+    const { service, prisma, txPrisma, standingsService } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(topCutTournament({ topCutSize: 2 }));
+    prisma.round.findFirst
+      .mockResolvedValueOnce(null) // no active Swiss round
+      .mockResolvedValueOnce(null) // no existing Top Cut round
+      .mockResolvedValueOnce({ number: 3 }); // last round so far
+    standingsService.getStandings.mockResolvedValue([
+      { participantId: 'p-2', points: 9 },
+      { participantId: 'p-4', points: 6 },
+      { participantId: 'p-1', points: 3 },
+    ]);
+
+    await service.startTopCut('t-1', OWNER);
+
+    expect(txPrisma.round.create).toHaveBeenCalledWith({
+      data: { tournamentId: 't-1', number: 4, status: 'IN_PROGRESS', phase: 'TOP_CUT', startedAt: expect.any(Date) },
+    });
+    expect(txPrisma.match.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ participantAId: 'p-2', participantBId: 'p-4' })],
+    });
   });
 });
 

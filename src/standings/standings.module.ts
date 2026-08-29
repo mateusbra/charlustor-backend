@@ -5,5 +5,6 @@ import { StandingsController } from './standings.controller.js';
 @Module({
   controllers: [StandingsController],
   providers: [StandingsService],
+  exports: [StandingsService],
 })
 export class StandingsModule {}

@@ -137,12 +137,18 @@ model Round {
   tournamentId String
   number       Int
   status       RoundStatus @default(PENDING)
+  phase        RoundPhase  @default(SWISS)
   startedAt    DateTime?
   completedAt  DateTime?
   tournament   Tournament  @relation(fields: [tournamentId], references: [id])
   matches      Match[]
 
   @@unique([tournamentId, number])
+}
+
+enum RoundPhase {
+  SWISS
+  TOP_CUT
 }
 
 enum RoundStatus {
@@ -154,6 +160,7 @@ enum RoundStatus {
 model Match {
   id               String       @id @default(uuid())
   roundId          String
+  position         Int          @default(0)
   participantAId   String
   participantBId   String?
   reportedScoreA   String?
