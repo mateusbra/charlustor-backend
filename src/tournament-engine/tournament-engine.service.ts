@@ -52,6 +52,10 @@ export class TournamentEngineService {
             roundId: round.id,
             participantAId: p.participantAId,
             participantBId: p.participantBId,
+            // A bye has no opponent to report against — confirm it immediately.
+            resultStatus: p.participantBId === null ? 'CONFIRMED' : 'PENDING',
+            confirmedScore: p.participantBId === null ? 'BYE' : null,
+            confirmedAt: p.participantBId === null ? new Date() : null,
           })),
         });
       }
@@ -78,8 +82,20 @@ export class TournamentEngineService {
     }
 
     const currentRound = await this.findCurrentRound(tournamentId);
-    // No gate on match confirmation yet — Match doesn't exist until features 008/009 land.
-    // 008 will also be responsible for generating the next round's pairings here.
+
+    const unconfirmed = await this.prisma.match.findMany({
+      where: { roundId: currentRound.id, resultStatus: { not: 'CONFIRMED' } },
+      select: { id: true, resultStatus: true },
+    });
+    if (unconfirmed.length > 0) {
+      throw new ConflictException({
+        message: 'All matches in the current round must be confirmed before advancing',
+        unconfirmedMatches: unconfirmed,
+      });
+    }
+
+    // Pairing for round 2+ still isn't generated here — real Swiss pairing
+    // needs standings computed from confirmed results (feature 010).
     await this.prisma.$transaction([
       this.prisma.round.update({ where: { id: currentRound.id }, data: { status: 'COMPLETED', completedAt: new Date() } }),
       this.prisma.round.create({
@@ -115,7 +131,14 @@ export class TournamentEngineService {
     return this.prisma.round.findMany({
       where: { tournamentId },
       orderBy: { number: 'asc' },
-      include: { _count: { select: { matches: true } } },
+      include: {
+        matches: {
+          include: {
+            participantA: { include: { user: { select: { id: true, nickname: true } } } },
+            participantB: { include: { user: { select: { id: true, nickname: true } } } },
+          },
+        },
+      },
     });
   }
 

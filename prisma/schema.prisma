@@ -152,12 +152,24 @@ enum RoundStatus {
 }
 
 model Match {
-  id             String       @id @default(uuid())
-  roundId        String
-  participantAId String
-  participantBId String?
-  createdAt      DateTime     @default(now())
-  round          Round        @relation(fields: [roundId], references: [id])
-  participantA   Participant  @relation("MatchA", fields: [participantAId], references: [id])
-  participantB   Participant? @relation("MatchB", fields: [participantBId], references: [id])
+  id               String       @id @default(uuid())
+  roundId          String
+  participantAId   String
+  participantBId   String?
+  reportedScoreA   String?
+  reportedScoreB   String?
+  resultStatus     MatchResult  @default(PENDING)
+  confirmedScore   String?
+  resolvedByUserId String?
+  confirmedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  round            Round        @relation(fields: [roundId], references: [id])
+  participantA     Participant  @relation("MatchA", fields: [participantAId], references: [id])
+  participantB     Participant? @relation("MatchB", fields: [participantBId], references: [id])
+}
+
+enum MatchResult {
+  PENDING
+  CONFIRMED
+  DISPUTED
 }

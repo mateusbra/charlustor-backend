@@ -9,6 +9,7 @@ import { TournamentsModule } from './tournaments/tournaments.module.js';
 import { RegistrationsModule } from './registrations/registrations.module.js';
 import { DecksModule } from './decks/decks.module.js';
 import { TournamentEngineModule } from './tournament-engine/tournament-engine.module.js';
+import { MatchesModule } from './matches/matches.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TournamentEngineModule } from './tournament-engine/tournament-engine.mo
     RegistrationsModule,
     DecksModule,
     TournamentEngineModule,
+    MatchesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

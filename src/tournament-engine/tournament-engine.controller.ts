@@ -6,26 +6,31 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 
 @Controller('tournaments/:id')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ORGANIZER', 'ADMIN')
 export class TournamentEngineController {
   constructor(private readonly engineService: TournamentEngineService) {}
 
   @Post('start')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   start(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engineService.start(id, user);
   }
 
   @Post('advance-round')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   advanceRound(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engineService.advanceRound(id, user);
   }
 
   @Post('complete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   complete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.engineService.complete(id, user);
   }
 
+  // Public — players need to see pairings/scores for their own tournament too.
   @Get('rounds')
   listRounds(@Param('id') id: string) {
     return this.engineService.listRounds(id);

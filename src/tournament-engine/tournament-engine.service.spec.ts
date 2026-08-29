@@ -18,7 +18,7 @@ function createMocks() {
     tournament: { findUnique: vi.fn(), update: vi.fn() },
     participant: { findMany: vi.fn() },
     round: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
-    match: { createMany: vi.fn() },
+    match: { createMany: vi.fn(), findMany: vi.fn(async () => []) },
     $transaction: vi.fn((arg: unknown) => {
       if (typeof arg === 'function') return (arg as (tx: typeof txPrisma) => Promise<unknown>)(txPrisma);
       return Promise.all(arg as Promise<unknown>[]);
@@ -84,7 +84,16 @@ describe('TournamentEngineService — start', () => {
       data: { tournamentId: 't-1', number: 1, status: 'IN_PROGRESS', startedAt: expect.any(Date) },
     });
     expect(txPrisma.match.createMany).toHaveBeenCalledWith({
-      data: [{ roundId: 'r-1', participantAId: 'p-1', participantBId: null }],
+      data: [
+        {
+          roundId: 'r-1',
+          participantAId: 'p-1',
+          participantBId: null,
+          resultStatus: 'CONFIRMED',
+          confirmedScore: 'BYE',
+          confirmedAt: expect.any(Date),
+        },
+      ],
     });
   });
 
@@ -102,8 +111,22 @@ describe('TournamentEngineService — start', () => {
 
     expect(txPrisma.match.createMany).toHaveBeenCalledWith({
       data: [
-        { roundId: 'r-1', participantAId: 'p-1', participantBId: 'p-4' },
-        { roundId: 'r-1', participantAId: 'p-2', participantBId: 'p-3' },
+        {
+          roundId: 'r-1',
+          participantAId: 'p-1',
+          participantBId: 'p-4',
+          resultStatus: 'PENDING',
+          confirmedScore: null,
+          confirmedAt: null,
+        },
+        {
+          roundId: 'r-1',
+          participantAId: 'p-2',
+          participantBId: 'p-3',
+          resultStatus: 'PENDING',
+          confirmedScore: null,
+          confirmedAt: null,
+        },
       ],
     });
   });
@@ -132,13 +155,18 @@ describe('TournamentEngineService — advanceRound', () => {
     await expect(service.advanceRound('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('completes the current round and creates the next one', async () => {
+  it('completes the current round and creates the next one when every match is confirmed', async () => {
     const { service, prisma } = createMocks();
     prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS' }));
     prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS' });
+    prisma.match.findMany.mockResolvedValue([]);
 
     await service.advanceRound('t-1', OWNER);
 
+    expect(prisma.match.findMany).toHaveBeenCalledWith({
+      where: { roundId: 'r-1', resultStatus: { not: 'CONFIRMED' } },
+      select: { id: true, resultStatus: true },
+    });
     expect(prisma.round.update).toHaveBeenCalledWith({
       where: { id: 'r-1' },
       data: { status: 'COMPLETED', completedAt: expect.any(Date) },
@@ -146,6 +174,16 @@ describe('TournamentEngineService — advanceRound', () => {
     expect(prisma.round.create).toHaveBeenCalledWith({
       data: { tournamentId: 't-1', number: 2, status: 'IN_PROGRESS', startedAt: expect.any(Date) },
     });
+  });
+
+  it('blocks advancing when a match is still PENDING or DISPUTED', async () => {
+    const { service, prisma } = createMocks();
+    prisma.tournament.findUnique.mockResolvedValue(baseTournament({ status: 'IN_PROGRESS' }));
+    prisma.round.findFirst.mockResolvedValue({ id: 'r-1', number: 1, status: 'IN_PROGRESS' });
+    prisma.match.findMany.mockResolvedValue([{ id: 'm-1', resultStatus: 'DISPUTED' }]);
+
+    await expect(service.advanceRound('t-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.round.update).not.toHaveBeenCalled();
   });
 });
 
@@ -173,16 +211,23 @@ describe('TournamentEngineService — complete', () => {
 });
 
 describe('TournamentEngineService — listRounds', () => {
-  it('lists rounds ordered by number with their match count', () => {
+  it('lists rounds ordered by number with their matches and participant nicknames', () => {
     const { service, prisma } = createMocks();
-    prisma.round.findMany.mockResolvedValue([{ id: 'r-1', number: 1, _count: { matches: 2 } }]);
+    prisma.round.findMany.mockResolvedValue([{ id: 'r-1', number: 1, matches: [] }]);
 
     service.listRounds('t-1');
 
     expect(prisma.round.findMany).toHaveBeenCalledWith({
       where: { tournamentId: 't-1' },
       orderBy: { number: 'asc' },
-      include: { _count: { select: { matches: true } } },
+      include: {
+        matches: {
+          include: {
+            participantA: { include: { user: { select: { id: true, nickname: true } } } },
+            participantB: { include: { user: { select: { id: true, nickname: true } } } },
+          },
+        },
+      },
     });
   });
 });
