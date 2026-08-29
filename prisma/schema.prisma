@@ -100,6 +100,7 @@ model Participant {
   registeredAt DateTime          @default(now())
   tournament   Tournament        @relation(fields: [tournamentId], references: [id])
   user         User              @relation(fields: [userId], references: [id])
+  deck         Deck?
 
   @@unique([tournamentId, userId])
 }
@@ -108,4 +109,22 @@ enum ParticipantStatus {
   REGISTERED
   WITHDRAWN
   DISQUALIFIED
+}
+
+model Deck {
+  id               String      @id @default(uuid())
+  participantId    String      @unique
+  mainExtraImage   String
+  sideImage        String
+  decodedCards     Json
+  validationStatus DeckStatus  @default(PENDING)
+  submittedAt      DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  participant      Participant @relation(fields: [participantId], references: [id])
+}
+
+enum DeckStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
