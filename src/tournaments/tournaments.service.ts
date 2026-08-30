@@ -4,6 +4,7 @@ import type { CreateTournamentDto } from './dto/create-tournament.dto.js';
 import type { UpdateTournamentDto } from './dto/update-tournament.dto.js';
 import { TournamentFormat } from '../generated/prisma/enums.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
+import { SeasonsService } from '../seasons/seasons.service.js';
 
 function assertFormatFields(format: TournamentFormat, roundsCount?: number | null, topCutSize?: number | null) {
   if (format === TournamentFormat.SWISS) {
@@ -25,7 +26,10 @@ const EDITABLE_STATUSES = ['DRAFT', 'REGISTRATION_OPEN', 'REGISTRATION_CLOSED'];
 
 @Injectable()
 export class TournamentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly seasonsService: SeasonsService,
+  ) {}
 
   findAll() {
     return this.prisma.tournament.findMany({ orderBy: { scheduledAt: 'asc' } });
@@ -37,8 +41,10 @@ export class TournamentsService {
     return tournament;
   }
 
-  create(organizerId: string, dto: CreateTournamentDto) {
+  async create(organizerId: string, dto: CreateTournamentDto) {
     assertFormatFields(dto.format, dto.roundsCount, dto.topCutSize);
+    // RF6.1 — every tournament created counts toward the season active at creation time.
+    const activeSeason = await this.seasonsService.findActive();
     return this.prisma.tournament.create({
       data: {
         name: dto.name,
@@ -47,6 +53,7 @@ export class TournamentsService {
         roundsCount: dto.roundsCount,
         topCutSize: dto.topCutSize,
         organizerId,
+        seasonId: activeSeason?.id,
       },
     });
   }

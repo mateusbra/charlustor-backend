@@ -11,8 +11,9 @@ function createMocks() {
   const prisma = {
     tournament: { create: vi.fn(), update: vi.fn(), delete: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
   };
-  const service = new TournamentsService(prisma as never);
-  return { service, prisma };
+  const seasonsService = { findActive: vi.fn(async () => null) };
+  const service = new TournamentsService(prisma as never, seasonsService as never);
+  return { service, prisma, seasonsService };
 }
 
 function baseTournament(overrides: Record<string, unknown> = {}) {
@@ -30,35 +31,35 @@ function baseTournament(overrides: Record<string, unknown> = {}) {
 }
 
 describe('TournamentsService — create', () => {
-  it('rejects SWISS without roundsCount', () => {
+  it('rejects SWISS without roundsCount', async () => {
     const { service } = createMocks();
-    expect(() =>
+    await expect(
       service.create(ORGANIZER.id, { name: 'x', format: 'SWISS', scheduledAt: new Date().toISOString() } as never),
-    ).toThrow(BadRequestException);
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects SWISS_TOP_CUT without topCutSize', () => {
+  it('rejects SWISS_TOP_CUT without topCutSize', async () => {
     const { service } = createMocks();
-    expect(() =>
+    await expect(
       service.create(ORGANIZER.id, {
         name: 'x',
         format: 'SWISS_TOP_CUT',
         scheduledAt: new Date().toISOString(),
         roundsCount: 4,
       } as never),
-    ).toThrow(BadRequestException);
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects SINGLE_ELIM with roundsCount set', () => {
+  it('rejects SINGLE_ELIM with roundsCount set', async () => {
     const { service } = createMocks();
-    expect(() =>
+    await expect(
       service.create(ORGANIZER.id, {
         name: 'x',
         format: 'SINGLE_ELIM',
         scheduledAt: new Date().toISOString(),
         roundsCount: 3,
       } as never),
-    ).toThrow(BadRequestException);
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('creates a valid SWISS tournament', async () => {
@@ -73,6 +74,23 @@ describe('TournamentsService — create', () => {
     } as never);
 
     expect(prisma.tournament.create).toHaveBeenCalled();
+  });
+
+  it('links the tournament to the currently active season, if any', async () => {
+    const { service, prisma, seasonsService } = createMocks();
+    seasonsService.findActive.mockResolvedValue({ id: 'season-1' });
+    prisma.tournament.create.mockResolvedValue(baseTournament());
+
+    await service.create(ORGANIZER.id, {
+      name: 'Weekly #1',
+      format: 'SWISS',
+      scheduledAt: new Date().toISOString(),
+      roundsCount: 4,
+    } as never);
+
+    expect(prisma.tournament.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ seasonId: 'season-1' }) }),
+    );
   });
 });
 

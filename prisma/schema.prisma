@@ -72,10 +72,22 @@ model Tournament {
   status       TournamentStatus @default(DRAFT)
   organizerId  String
   organizer    User             @relation(fields: [organizerId], references: [id])
+  seasonId     String?
+  season       Season?          @relation(fields: [seasonId], references: [id])
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   participants Participant[]
   rounds       Round[]
+}
+
+model Season {
+  id          String       @id @default(uuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  tournaments Tournament[]
 }
 
 enum TournamentFormat {

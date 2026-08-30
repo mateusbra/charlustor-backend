@@ -11,6 +11,7 @@ import { DecksModule } from './decks/decks.module.js';
 import { TournamentEngineModule } from './tournament-engine/tournament-engine.module.js';
 import { MatchesModule } from './matches/matches.module.js';
 import { StandingsModule } from './standings/standings.module.js';
+import { SeasonsModule } from './seasons/seasons.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { StandingsModule } from './standings/standings.module.js';
     TournamentEngineModule,
     MatchesModule,
     StandingsModule,
+    SeasonsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
