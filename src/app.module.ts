@@ -13,6 +13,7 @@ import { MatchesModule } from './matches/matches.module.js';
 import { StandingsModule } from './standings/standings.module.js';
 import { SeasonsModule } from './seasons/seasons.module.js';
 import { OrganizersModule } from './organizers/organizers.module.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { OrganizersModule } from './organizers/organizers.module.js';
     StandingsModule,
     SeasonsModule,
     OrganizersModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

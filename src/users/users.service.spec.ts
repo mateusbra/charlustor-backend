@@ -5,7 +5,7 @@ import { Prisma } from '../generated/prisma/client.js';
 
 function createMocks() {
   const prisma = {
-    user: { update: vi.fn(), findUnique: vi.fn() },
+    user: { update: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
   };
   const service = new UsersService(prisma as never);
   return { service, prisma };
@@ -57,5 +57,35 @@ describe('UsersService', () => {
       where: { id: 'user-1' },
       select: { id: true, nickname: true },
     });
+  });
+
+  it('lists all users without their password hash', async () => {
+    const { service, prisma } = createMocks();
+    prisma.user.findMany.mockResolvedValue([]);
+
+    await service.findAll();
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      select: { id: true, email: true, nickname: true, role: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('updates a user role', async () => {
+    const { service, prisma } = createMocks();
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'PLAYER' });
+    prisma.user.update.mockResolvedValue({ id: 'user-1', role: 'ORGANIZER', passwordHash: 'hash' });
+
+    const result = await service.updateRole('user-1', 'ORGANIZER');
+
+    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { role: 'ORGANIZER' } });
+    expect(result).not.toHaveProperty('passwordHash');
+  });
+
+  it('rejects updateRole for a user that does not exist', async () => {
+    const { service, prisma } = createMocks();
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(service.updateRole('missing', 'ORGANIZER')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

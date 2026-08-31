@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StandingsService } from '../standings/standings.service.js';
 import { calculateTournamentPlacements, type BracketRound } from './season-ranking-calculator.js';
@@ -31,6 +31,29 @@ export class SeasonsService {
 
   findActive() {
     return this.prisma.season.findFirst({ where: { isActive: true } });
+  }
+
+  findAll() {
+    return this.prisma.season.findMany({ orderBy: { startDate: 'desc' } });
+  }
+
+  async activate(id: string) {
+    const season = await this.prisma.season.findUnique({ where: { id } });
+    if (!season) throw new NotFoundException('Season not found');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.season.updateMany({ where: { isActive: true }, data: { isActive: false } });
+      return tx.season.update({ where: { id }, data: { isActive: true } });
+    });
+  }
+
+  async close(id: string) {
+    const season = await this.prisma.season.findUnique({ where: { id } });
+    if (!season) throw new NotFoundException('Season not found');
+    if (!season.isActive) throw new ConflictException('Season is not active');
+    return this.prisma.season.update({
+      where: { id },
+      data: { isActive: false, endDate: season.endDate ?? new Date() },
+    });
   }
 
   async getRanking(seasonId: string) {

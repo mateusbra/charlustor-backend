@@ -48,4 +48,18 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
+
+  findAll() {
+    return this.prisma.user.findMany({
+      select: { id: true, email: true, nickname: true, role: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async updateRole(id: string, role: Role) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+    const { passwordHash: _passwordHash, ...updated } = await this.prisma.user.update({ where: { id }, data: { role } });
+    return updated;
+  }
 }

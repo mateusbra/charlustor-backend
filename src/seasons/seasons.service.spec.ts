@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { SeasonsService } from './seasons.service.js';
 import { PLACEMENT_POINTS } from './season-ranking-calculator.js';
 
 function createMocks() {
-  const txPrisma = { season: { updateMany: vi.fn(), create: vi.fn() } };
+  const txPrisma = { season: { updateMany: vi.fn(), create: vi.fn(), update: vi.fn() } };
   const prisma = {
-    season: { updateMany: vi.fn(), create: vi.fn(), findFirst: vi.fn() },
+    season: { updateMany: vi.fn(), create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     tournament: { findMany: vi.fn(async () => []) },
     participant: { findMany: vi.fn(async () => []) },
     round: { findMany: vi.fn(async () => []) },
@@ -98,5 +99,67 @@ describe('SeasonsService — getRanking', () => {
       { position: 1, userId: 'u1', nickname: 'Alice', points: PLACEMENT_POINTS.FIRST, tournamentsPlayed: 1 },
       { position: 2, userId: 'u2', nickname: 'Bob', points: PLACEMENT_POINTS.SECOND, tournamentsPlayed: 1 },
     ]);
+  });
+});
+
+describe('SeasonsService — activate', () => {
+  it('deactivates any other active season and activates the requested one', async () => {
+    const { service, prisma, txPrisma } = createMocks();
+    prisma.season.findUnique.mockResolvedValue({ id: 's-2', isActive: false });
+    txPrisma.season.update.mockResolvedValue({ id: 's-2', isActive: true });
+
+    await service.activate('s-2');
+
+    expect(txPrisma.season.updateMany).toHaveBeenCalledWith({ where: { isActive: true }, data: { isActive: false } });
+    expect(txPrisma.season.update).toHaveBeenCalledWith({ where: { id: 's-2' }, data: { isActive: true } });
+  });
+
+  it('rejects activating a season that does not exist', async () => {
+    const { service, prisma } = createMocks();
+    prisma.season.findUnique.mockResolvedValue(null);
+
+    await expect(service.activate('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('SeasonsService — close', () => {
+  it('deactivates an active season and fills endDate when missing', async () => {
+    const { service, prisma } = createMocks();
+    prisma.season.findUnique.mockResolvedValue({ id: 's-1', isActive: true, endDate: null });
+    prisma.season.update.mockResolvedValue({ id: 's-1', isActive: false });
+
+    await service.close('s-1');
+
+    expect(prisma.season.update).toHaveBeenCalledWith({
+      where: { id: 's-1' },
+      data: { isActive: false, endDate: expect.any(Date) },
+    });
+  });
+
+  it('keeps the existing endDate when already set', async () => {
+    const { service, prisma } = createMocks();
+    const endDate = new Date('2026-03-01');
+    prisma.season.findUnique.mockResolvedValue({ id: 's-1', isActive: true, endDate });
+
+    await service.close('s-1');
+
+    expect(prisma.season.update).toHaveBeenCalledWith({
+      where: { id: 's-1' },
+      data: { isActive: false, endDate },
+    });
+  });
+
+  it('rejects closing a season that is not active', async () => {
+    const { service, prisma } = createMocks();
+    prisma.season.findUnique.mockResolvedValue({ id: 's-1', isActive: false, endDate: null });
+
+    await expect(service.close('s-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects closing a season that does not exist', async () => {
+    const { service, prisma } = createMocks();
+    prisma.season.findUnique.mockResolvedValue(null);
+
+    await expect(service.close('missing')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
