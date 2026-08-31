@@ -14,6 +14,7 @@ import { StandingsModule } from './standings/standings.module.js';
 import { SeasonsModule } from './seasons/seasons.module.js';
 import { OrganizersModule } from './organizers/organizers.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { YoutubeModule } from './youtube/youtube.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AdminModule } from './admin/admin.module.js';
     SeasonsModule,
     OrganizersModule,
     AdminModule,
+    YoutubeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
