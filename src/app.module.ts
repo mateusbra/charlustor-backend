@@ -12,6 +12,7 @@ import { TournamentEngineModule } from './tournament-engine/tournament-engine.mo
 import { MatchesModule } from './matches/matches.module.js';
 import { StandingsModule } from './standings/standings.module.js';
 import { SeasonsModule } from './seasons/seasons.module.js';
+import { OrganizersModule } from './organizers/organizers.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SeasonsModule } from './seasons/seasons.module.js';
     MatchesModule,
     StandingsModule,
     SeasonsModule,
+    OrganizersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
